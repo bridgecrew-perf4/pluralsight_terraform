@@ -39,7 +39,7 @@ data "aws_ami" "aws-linux" {
   }
 
   filter {
-    name    = "virtualization"
+    name    = "virtualization-type"
     values  = [ "hvm" ]
   }
 }
@@ -83,7 +83,7 @@ resource "aws_instance" "nginx" {
   
   connection {
     type        = "ssh"
-    host        = self.public.id
+    host        = self.public_ip
     user        = "ec2-user"
     private_key = file(var.private_key_path)
   }
