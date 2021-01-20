@@ -61,6 +61,10 @@ data "aws_ami" "aws-linux" {
 resource "aws_vpc" "vpc" {
   cidr_block            = var.network_address_space
   enable_dns_hostnames  = true
+
+  tags = {
+    "Name" = "Terraform VPC"
+  }
 }
 
 resource "aws_internet_gateway" "igw" {
@@ -95,7 +99,7 @@ resource "aws_route_table_association" "rta-subnet-1" {
 resource "aws_security_group" "nginx-sg" {
   name          = "nginx_demo"
   description   = "Allow ports for nginx demo"
-  vpc_id        = aws_default_vpc.default.id
+  vpc_id        = aws_vpc.vpc.id
 
   ingress {
     from_port   = 22
