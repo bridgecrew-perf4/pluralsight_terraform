@@ -59,7 +59,7 @@ data "aws_ami" "aws-linux" {
 # RESOURCES
 ##############################################################################################
 
-## NETWORKING SECTION ##
+## ---------- NETWORKING SECTION ---------- ##
 
 resource "aws_vpc" "vpc" {
   cidr_block            = var.network_address_space
@@ -111,8 +111,29 @@ resource "aws_route_table_association" "rta-subnet-2" {
 
 ## SECURITY GROUPS ##
 
+resource "aws_security_group" "elb-sg" {
+  name    = "nginx_elb_sg"
+  vpc_id  = aws_vpc.vpc.id
+
+  # Allow HTTP from anywhere
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [ "0.0.0.0/0" ]
+  } 
+
+  # Allow all outbound
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [ "0.0.0.0/0" ]
+  }
+}
+
 resource "aws_security_group" "nginx-sg" {
-  name          = "nginx_demo"
+  name          = "nginx_sg"
   description   = "Allow ports for nginx demo"
   vpc_id        = aws_vpc.vpc.id
 
@@ -126,17 +147,33 @@ resource "aws_security_group" "nginx-sg" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = [ "0.0.0.0/0" ]
+    cidr_blocks = [ var.network_address_space ]
   }
   egress {
     from_port   = 0
     to_port     = 0
-    protocol    = -1
+    protocol    = "-1"
     cidr_blocks = [ "0.0.0.0/0" ]
   }
 }
 
-## INSTANCES ##
+## LOAD BALANCER ##
+resource "aws_elb" "web-elb" {
+  name            = "nginx-elb"
+
+  subnets         = [ aws_subnet.subnet1.id, aws_subnet.subnet2.id ]
+  security_groups = [ aws_security_group.elb-sg.id ]
+  instances       = [ aws_instance.nginx1.id, aws_instance.nginx2.id ]
+
+  listener {
+    instance_port     = 80
+    instance_protocol = "http"
+    lb_port           = 80
+    lb_protocol       = "http"
+  }
+}
+
+## ---------- INSTANCES ---------- ##
 
 resource "aws_instance" "nginx1" {
   ami                       = data.aws_ami.aws-linux.id
@@ -161,10 +198,33 @@ resource "aws_instance" "nginx1" {
   }
 }
 
+resource "aws_instance" "nginx2" {
+  ami                       = data.aws_ami.aws-linux.id
+  instance_type             = "t2.micro"
+  subnet_id                 = aws_subnet.subnet2.id
+  key_name                  = var.key_name
+  vpc_security_group_ids    = [ aws_security_group.nginx-sg.id ]
+  
+  connection {
+    type        = "ssh"
+    host        = self.public_ip
+    user        = "ec2-user"
+    private_key = file(var.private_key_path)
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+        "sudo yum install nginx -y",
+        "sudo service nginx start",
+        "echo '<html><head><title>Green Team Server</title></head><body style=\"background-color:#77A032\"><p style=\"text-align: center;\"><span style=\"color:#FFFFFF;\"><span style=\"font-size:28px;\">Green Team</span></span></p></body></html>' | sudo tee /usr/share/nginx/html/index.html"
+    ]
+  }
+}
+
 ##############################################################################################
 # OUTPUTS
 ##############################################################################################
 
-output "aws_instance_public_dns" {
-  value = aws_instance.nginx1.public_dns
+output "aws_elb_public_dns" {
+  value = aws_elb.web-elb.dns_name
 }
